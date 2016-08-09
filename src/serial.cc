@@ -1,43 +1,80 @@
-#include "serial.h"
+#include <serial.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <cstring>
+#include <stdexcept>
+#include <iostream>
+#include <string>
+
+extern "C" {
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <sys/ioctl.h>
+}
+
+class serial::impl {
+    public:
+        impl(const std::string &dev, int baud, char eol);
+        ~impl();
+        void connect();
+        void disconnect();
+        void read(std::string &msg);
+        void write(const std::string &msg);
+        bool isConnected();
+
+   private:
+        void setParameters();
+        void clear();
+        std::string m_dev;
+        int m_baud;
+        char m_eol;
+        int m_fd;
+        bool m_isSet;
+};
 
 /**
     Constructor
 */
-serial ::serial(std::string dev, int baud, char endOfLine) {
-    device = dev;
-    baudrate = baud;
-    eol = endOfLine;
-
-    if (connect() == -1)
-        throw std::runtime_error("[Serial] Error opening port\n");
-
-    setParameters();
+serial::impl::impl(const std::string &dev, int baud, char eol)
+    : m_dev(dev)
+    , m_baud(baud)
+    , m_eol(eol)
+    , m_fd(-1)
+    , m_isSet(false)
+{
+    try {
+        connect();
+        setParameters();
+    } catch (const std::runtime_error &e) {
+        std::cout << e.what() << "\n";
+    }
 }
 
 /**
     Destructor
 */
-serial::~serial() {
+serial::impl::~impl() {
     disconnect();
 }
 
 /**
     Sets port parameters
 */
-bool serial::setParameters() {
+void serial::impl::setParameters() {
     struct termios terminalAttributes;
     memset(&terminalAttributes, 0, sizeof(terminalAttributes));
 
-    terminalAttributes.c_cflag = CREAD | CLOCAL | CS8;// Control flags
-    terminalAttributes.c_iflag = INPCK;// Input flags - enable parity checking
-    terminalAttributes.c_oflag = 0;// Output flags
-    terminalAttributes.c_lflag = 0;// Local Modes flags
+    terminalAttributes.c_cflag = CREAD | CLOCAL | CS8; // Control flags
+    terminalAttributes.c_iflag = INPCK; // Input flags - enable parity checking
+    terminalAttributes.c_oflag = 0; // Output flags
+    terminalAttributes.c_lflag = 0; // Local Modes flags
+    terminalAttributes.c_cc[VTIME] = 10; // Read timeout, in tenths of a second
+    terminalAttributes.c_cc[VMIN] = 0; // Minimum characters to read
 
-    terminalAttributes.c_cc[VTIME] = 10;// Read timeout, in tenths of a second
-    terminalAttributes.c_cc[VMIN] = 0;// Minimum characters to read
-
-    switch( baudrate )
-    {
+    switch(m_baud) {
         case 50:
             terminalAttributes.c_cflag |= B50;
             break;
@@ -96,70 +133,90 @@ bool serial::setParameters() {
             terminalAttributes.c_cflag |= B115200;
     }
 
-    return !tcsetattr(fd, TCSANOW, &terminalAttributes);  // Set options
+    if (tcsetattr(m_fd, TCSANOW, &terminalAttributes) == 1)
+        throw std::runtime_error("Error, can't set parameters");
 }
 
-int serial::connect() {
-    fd = open(device.c_str(), O_RDWR | O_NOCTTY );
+void serial::impl::connect() {
+    m_fd = open(m_dev.c_str(), O_RDWR | O_NOCTTY );
 
-    if(fd == -1)
-        return -1;
-
-    return 0;
+    if(m_fd == -1)
+        throw std::runtime_error("Error, could not open serial port");
 }
 
-void serial::disconnect()
-{
+void serial::impl::disconnect() {
     clear();
-    close(fd);
+    close(m_fd);
 }
 
 /**
     Sends message to serial port
 */
-int serial::sendString(std::string &message) {
-    if (!isConnected()) {
-        //std::cerr << "serial::sendString: Device not connected\n";
-        return -1;
-    } else {
-        int n = write(fd, ( char*) message.c_str(), strlen(message.c_str()));
-        //std::cout << "serial::sendString: Message: " << message <<"\n";
-        //clear();
-        return n;
-    }
+void serial::impl::write(const std::string &msg) {
+    if (!isConnected())
+        throw std::logic_error("Error, port not opened");
+
+    ::write(m_fd, ( char*) msg.c_str(), strlen(msg.c_str()));
+    //std::cout << "serial::write: Message: " << msg <<"\n";
 }
  
 /**
     Reads from serial port
 */
-int serial::readString (std::string &msg) {
-    if (!isConnected()) {
-        //std::cerr << "serial::readString: Device not connected\n";
-        return -1;
-    }
+void serial::impl::read(std::string &msg) {
+    if (!isConnected())
+        throw std::logic_error("Error, port not opened");
 
     unsigned char c=0x0D;
-    while (c!=eol) {
-        if (read(fd, &c, sizeof(char)) > 0 && c!= 0x0A && c!= 0x0D && c!= '>') {
+    while (c != m_eol) {
+        if (::read( m_fd, &c, sizeof(char)) > 0 && c!= 0x0A && c!= 0x0D && c!= '>')
             msg += c;
-            //std::cout << "serial::readString: Received: " << c << "\n"; // Debug
-        }
     }
-
-    return msg.size();
 }
 
 /**
     Flushes port
 */
-void serial::clear() {
-    tcflush(fd, TCIFLUSH);
-    tcflush(fd, TCOFLUSH);
+void serial::impl::clear() {
+    tcflush(m_fd, TCIFLUSH);
+    tcflush(m_fd, TCOFLUSH);
 }
 
 /**
     Returns connection state
 */
+bool serial::impl::isConnected() {
+    return (m_fd != -1);
+}
+
+
+/**
+    Public api
+*/
+
+serial::serial(const std::string &dev, int baud, char eol)
+    : m_impl(new serial::impl(dev, baud, eol)) {
+}
+
+serial::~serial() {
+}
+
+void serial::connect() {
+    m_impl->connect();
+}
+
+void serial::disconnect() {
+    m_impl->disconnect();
+}
+
+void serial::write(const std::string &msg) {
+    m_impl->write(msg);
+}
+
+void serial::read(std::string &msg) {
+    m_impl->read(msg);
+}
+
 bool serial::isConnected() {
- return (fd != -1);
+    return m_impl->isConnected();
 }

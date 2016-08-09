@@ -1,38 +1,20 @@
-#ifndef SERIALPORT_H_
-#define SERIALPORT_H_
+#ifndef SERIAL_H_
+#define SERIAL_H_
+#include <memory>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <cstring>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <termios.h>
-#include <sys/ioctl.h>
-#include <stdexcept>
-#include <iostream>
-#include <string>
-
-#define TIMEOUT_US 400000
-
-class serial
-{
+class serial {
     public:
-        serial(std::string dev, int baud, char endOfLine);
+        serial(const std::string &dev, int baud, char eol);
         ~serial();
-        int connect ();
-        bool setParameters();
-        void disconnect(void);
-        int sendString(std::string &message);
-        int readString (std::string &message);
+        void connect();
+        void disconnect();
+        void write(const std::string &msg);
+        void read(std::string &msg);
         bool isConnected();
 
-   private:
-        int fd;
-        std::string device;
-        int baudrate;
-        char eol;
-        void clear();
+    private:
+        class impl;
+        std::unique_ptr<impl> m_impl;
 };
 
-#endif /* SERIALPORT_H_ */
+#endif /* SERIAL_H_ */
