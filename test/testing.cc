@@ -1,20 +1,31 @@
-//Test /dev/cu.usbserial
 #include <serial.h>
+#include <iostream>
+#include <string>
 
-int main(int argc, char *argv[]) {
-    if (argc != 3 ) {
-        std::cerr << "Error: enter parameters.\n";
-        return 1;
+static void echo(serial &s)
+{
+    std::string msg;
+    while (s.isConnected()) {
+        s.read(msg);
+        std::cout << msg << "\n";
+    }
+}
+
+int main(int argc, char **argv)
+{
+    if (argc < 3) {
+        std::cout << "Usage:\n" << argv[0] << " [port] [baudrate]\n\n";
+        return 0;
     }
 
-    serial a(argv[1], 115200,'>');
-    a.clear();
-    std::string msg = "ATE0\r\n";
-    a.sendString(msg);
-    std::string rcv;
-    a.readString(rcv);
-    std::cout << "rx ... " << rcv << "\n";
+    try {
+        serial s(argv[1], 115200, '>');
+        echo(s);
+    }
+    catch (const std::exception &e) {
+        std::cout << e.what() << " " << argv[1] << "\n";
+        return -1;
+    }
 
     return 0;
 }
-
