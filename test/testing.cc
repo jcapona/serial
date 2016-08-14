@@ -19,7 +19,7 @@ int main(int argc, char **argv)
     }
 
     try {
-        serial s(argv[1], 115200, '>');
+        serial s(argv[1], atoi(argv[2]), '\n');
         echo(s);
     }
     catch (const std::exception &e) {
