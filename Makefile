@@ -13,6 +13,9 @@
 CXX=g++ -std=c++11
 INCLUDES=-Iinclude
 CXXOPTS=-Wall -g -O2
+ifeq "$(ENV)" "DEBUG"
+    CXXOPTS += -DDEBUG
+endif
 CXXFLAGS=$(CXXOPTS) $(INCLUDES)
 LDFLAGS=
 LDLIBS=

@@ -1,5 +1,11 @@
 #include <serial.h>
 
+#ifdef DEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
@@ -51,6 +57,9 @@ serial::impl::impl(const std::string &dev, int baud, char eol)
     } catch (const std::runtime_error &e) {
         std::cout << e.what() << "\n";
     }
+
+    if(DEBUG)
+        std::cout << "[serial : serial] Connected to " << dev << " @ " << baud << " kbps\n";
 }
 
 /**
@@ -157,9 +166,11 @@ void serial::impl::write(const std::string &msg) {
         throw std::logic_error("Error, port not opened");
 
     ::write(m_fd, ( char*) msg.c_str(), strlen(msg.c_str()));
-    //std::cout << "serial::write: Message: " << msg <<"\n";
+
+    if(DEBUG)
+        std::cout << "[serial : write] " << msg << "\n";
 }
- 
+
 /**
     Reads from serial port
 */
@@ -167,11 +178,15 @@ void serial::impl::read(std::string &msg) {
     if (!isConnected())
         throw std::logic_error("Error, port not opened");
 
+    msg.clear();
     unsigned char c=0x0D;
     while (c != m_eol) {
         if (::read( m_fd, &c, sizeof(char)) > 0 && c!= 0x0A && c!= 0x0D && c!= '>')
             msg += c;
     }
+
+    if(DEBUG)
+        std::cout << "[serial : read] " << msg << "\n";
 }
 
 /**
